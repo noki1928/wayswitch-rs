@@ -1,0 +1,44 @@
+# ~/.config/wayswitch-rs/config.toml — все ключи необязательны.
+
+[general]
+auto_correct = true
+sensitivity = "normal"        # conservative | normal | aggressive
+phrase_timeout_sec = 8.0
+undo_window_sec = 5.0
+edit_guard_sec = 1.0
+punct_fix = true              # «пирогб» → «пирог,»
+particles_fix = true          # «чтото» → «что-то»
+split_words_fix = true        # «сонатуБаха» → «сонату Баха»
+two_capitals_fix = true       # «ПРивет» → «Привет»
+caps_fix = true               # «пРИВЕТ» → «Привет»
+early_switch = true           # «ghbd» → «прив» на четвёртой букве
+fix_on_tab = false
+fix_on_enter = false
+learn_after_undos = 2
+
+[security]
+# Фокус неизвестен (at-spi молчит, приложение без доступности):
+#   "skip"  — не исправлять автоматически, только двойным Shift (по умолчанию);
+#   "allow" — исправлять как WaySwitch. Риск: пароль в таком приложении
+#             может быть «исправлен».
+unknown_focus = "skip"
+# Терминалы: "manual" — только вручную (sudo/ssh спрашивают пароль так,
+# что at-spi этого не видит), "auto" — как везде, "off" — ничего.
+terminals = "manual"
+# Запоминать слова после отмен (только по жесту с клавиатуры). Хранятся как
+# HMAC-SHA256, но ключ лежит рядом и читается вашими программами.
+learn_words = true
+# Ещё программы, где не делать ничего (подстрока имени, без регистра).
+sensitive_apps = []
+
+[gesture]
+manual = "double_shift"       # double_shift | none
+
+[typing]
+settle_ms = 120
+key_delay_ms = 0
+
+[backend]
+prefer = "auto"               # auto | gnome | kde | sway | hyprland
+# В setgid-установке всегда uinput: текст не отправляется по D-Bus.
+gnome_typing = "extension"    # extension | uinput

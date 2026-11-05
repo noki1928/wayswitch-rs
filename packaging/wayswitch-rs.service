@@ -1,0 +1,23 @@
+[Unit]
+Description=wayswitch-rs — автоисправление раскладки
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wayswitch-rs run
+Restart=on-failure
+RestartSec=3
+# 2 — ошибка в конфиге, 3 — уже запущен: перезапуск не поможет. Код 4 (нет
+# бэкенда или доступа) перезапускаем: после входа KWin/udev бывают не готовы.
+RestartPreventExitStatus=2 3
+# Без core-дампов и с закрытыми по умолчанию файлами.
+LimitCORE=0
+UMask=0077
+# Никаких MemoryDenyWriteExecute, LockPersonality, RestrictRealtime,
+# SystemCallFilter и т. п.: в пользовательской службе они неявно включают
+# NoNewPrivileges, а он отключает setgid — демон остаётся без доступа к
+# клавиатурам и /dev/uinput.
+
+[Install]
+WantedBy=graphical-session.target
