@@ -16,7 +16,9 @@ use zbus::zvariant::OwnedObjectPath;
 
 use crate::Event;
 
-const POLL: Duration = Duration::from_millis(300);
+const POLL: Duration = Duration::from_millis(500);
+/// Перебор /proc — самая дорогая проверка: раз в несколько опросов.
+const PROC_EVERY: u32 = 4;
 const LOCKERS: [&str; 9] = [
     "swaylock", "hyprlock", "gtklock", "waylock", "kscreenlocker_g", "kscreenlocker_greet",
     "swaylock-effec", "nwg-lock", "chayang",
@@ -44,10 +46,13 @@ fn run(tx: Sender<Event>) {
         }
     });
     let mut locked = None;
+    let (mut tick, mut locker) = (0u32, false);
     loop {
-        let now = logind_locked(system.as_ref(), logind.as_ref())
-            || screensaver_active(session.as_ref())
-            || locker_running();
+        if tick % PROC_EVERY == 0 {
+            locker = locker_running();
+        }
+        tick = tick.wrapping_add(1);
+        let now = logind_locked(system.as_ref(), logind.as_ref()) || screensaver_active(session.as_ref()) || locker;
         if locked != Some(now) {
             locked = Some(now);
             if tx.send(Event::Locked(now)).is_err() {

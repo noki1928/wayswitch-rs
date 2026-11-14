@@ -206,6 +206,13 @@ fn listen_events(conn: &Connection, t: &FocusTracker, tx: Sender<Event>) {
             continue; // это событие «фокус ушёл»
         }
         let info = tree.describe(&node);
+        // Уведомления и кнопки панели (plasmashell, gnome-shell) получают фокус,
+        // но печатают не туда. Раньше такой узел залипал в снимке: проверка
+        // «окно активно» для оболочки всегда проходила, а буфер стирался.
+        // Поле пароля в оболочке (polkit, связка ключей) — учитываем.
+        if info.app.as_deref().is_some_and(is_shell) && !info.password {
+            continue;
+        }
         let changed = {
             let old = t.info.lock().unwrap();
             old.node != info.node

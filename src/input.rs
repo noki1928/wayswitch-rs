@@ -185,7 +185,7 @@ fn read_loop(w: &Watcher, mut dev: Device, id: u32, kind: Kind) {
                         // исправления он вырос, человек успел напечатать ещё.
                         let presses = w.phys.presses.load(Ordering::SeqCst);
                         let seq = w.phys.seq.fetch_add(1, Ordering::SeqCst) + 1;
-                        if w.tx.send(Event::Key { code, value, device: id, seq, presses }).is_err() {
+                        if w.tx.send(Event::Key { code, value, device: id, seq, presses, at: std::time::Instant::now() }).is_err() {
                             return;
                         }
                         if code == kc::KEY_CAPSLOCK && value == 0 {

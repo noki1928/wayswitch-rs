@@ -84,6 +84,11 @@ pub struct Status {
     pub learned: u32,
     pub setgid: bool,
     pub atspi_events: bool,
+    /// Жестов всего и сколько из них застали пустой буфер (только смена раскладки).
+    pub gestures: u32,
+    pub gestures_no_word: u32,
+    /// Сколько раз буфер стёрт сменой фокуса.
+    pub focus_resets: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,6 +278,9 @@ impl Controller {
     }
 
     pub fn focus_changed(&mut self) {
+        if !self.buffer.is_empty() {
+            self.status.lock().unwrap().focus_resets += 1;
+        }
         self.forget("сменился фокус");
         self.publish();
     }
@@ -359,16 +367,27 @@ impl Controller {
 
     // --- ввод -------------------------------------------------------------------
 
-    pub fn on_key(&mut self, code: u16, value: i32, device: u32, seq: u64, presses: u64) {
+    pub fn on_key(&mut self, code: u16, value: i32, device: u32, seq: u64, presses: u64, at: Instant) {
+        // Время нажатия, а не разбора: пока идёт исправление, события копятся
+        // в очереди и разбираются пачкой.
+        let t = at.saturating_duration_since(self.started).as_secs_f64();
         if let Some(b) = &self.busy {
             if seq > b.after_seq && seq <= b.until_seq {
                 // Нажато, пока демон печатал.
                 let aborted = b.aborted;
                 if !aborted {
                     self.buffer.note(code, value, device);
-                    self.gesture.on_key(code, value, self.now());
+                    let gesture = self.gesture.on_key(code, value, t);
                     if value == 1 && !kc::is_modifier(code) && !kc::is_lock(code) {
                         self.forget("ввод во время исправления");
+                    }
+                    // Двойной Shift сразу после пробела приходит как раз сюда:
+                    // раньше он терялся, хотя это обычная отмена исправления.
+                    if let Some(g) = gesture {
+                        if !self.locked && !self.paused {
+                            self.trigger = Some((seq, presses, (device, code)));
+                            self.manual(g, Some(presses));
+                        }
                     }
                     return;
                 }
@@ -389,7 +408,7 @@ impl Controller {
             return;
         }
         let gesture = if self.cfg.gesture.manual == "double_shift" {
-            self.gesture.on_key(code, value, self.now())
+            self.gesture.on_key(code, value, t)
         } else {
             None
         };
@@ -409,7 +428,7 @@ impl Controller {
             }
             return;
         }
-        let event = self.buffer.feed(&self.det.keymap, code, value, device, self.now());
+        let event = self.buffer.feed(&self.det.keymap, code, value, device, t);
         if let Some(g) = gesture {
             self.trigger = Some((seq, presses, (device, code)));
             self.manual(g, Some(presses));
@@ -607,7 +626,9 @@ impl Controller {
         let Some((current, other)) = self.groups() else { return };
         self.buffer.expire(self.now());
         let (word, tail) = self.buffer.last_word_with_tail();
+        self.status.lock().unwrap().gestures += 1;
         if word.is_empty() {
+            self.status.lock().unwrap().gestures_no_word += 1;
             // Слова нет (или мы в поле пароля и ничего не храним) — только
             // переключить раскладку.
             if !self.dry_run {
@@ -936,20 +957,20 @@ mod tests {
         let keys = c.det.keymap.presses_for(text, 0).unwrap();
         for k in keys {
             if k.shift {
-                c.on_key(kc::KEY_LEFTSHIFT, 1, 1, 0, 0);
+                c.on_key(kc::KEY_LEFTSHIFT, 1, 1, 0, 0, Instant::now());
             }
-            c.on_key(k.code, 1, 1, 0, 0);
-            c.on_key(k.code, 0, 1, 0, 0);
+            c.on_key(k.code, 1, 1, 0, 0, Instant::now());
+            c.on_key(k.code, 0, 1, 0, 0, Instant::now());
             if k.shift {
-                c.on_key(kc::KEY_LEFTSHIFT, 0, 1, 0, 0);
+                c.on_key(kc::KEY_LEFTSHIFT, 0, 1, 0, 0, Instant::now());
             }
         }
     }
 
     fn double_shift(c: &mut Controller) {
         for _ in 0..2 {
-            c.on_key(kc::KEY_LEFTSHIFT, 1, 1, 0, 0);
-            c.on_key(kc::KEY_LEFTSHIFT, 0, 1, 0, 0);
+            c.on_key(kc::KEY_LEFTSHIFT, 1, 1, 0, 0, Instant::now());
+            c.on_key(kc::KEY_LEFTSHIFT, 0, 1, 0, 0, Instant::now());
         }
     }
 
@@ -1009,6 +1030,19 @@ mod tests {
         type_text(&mut c, "ghbdtn ");
         assert!(log.lock().unwrap().is_empty());
         assert!(c.buffer.is_empty());
+    }
+
+    #[test]
+    fn double_shift_during_fix_is_not_lost() {
+        let (mut c, log) = controller(Some(FocusTracker::fake("gedit", false, false)), no_early());
+        type_text(&mut c, "ghbdtn ");
+        // Shift-нажатия пришли, пока демон печатал исправление.
+        c.busy = Some(Busy { after_seq: 10, until_seq: 20, aborted: false });
+        for (seq, value) in [(11, 1), (12, 0), (13, 1), (14, 0)] {
+            c.on_key(kc::KEY_LEFTSHIFT, value, 1, seq, 0, Instant::now());
+        }
+        assert_eq!(*log.lock().unwrap(), ["set 1", "bs 7", "type привет ", "set 0", "bs 7", "type ghbdtn "]);
+        assert_eq!(c.status.lock().unwrap().gestures, 1);
     }
 
     #[test]

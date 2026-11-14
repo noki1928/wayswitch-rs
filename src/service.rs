@@ -73,6 +73,9 @@ impl Service {
             ("learned".into(), v(s.learned)),
             ("setgid".into(), v(s.setgid)),
             ("atspi_events".into(), v(s.atspi_events)),
+            ("gestures".into(), v(s.gestures)),
+            ("gestures_no_word".into(), v(s.gestures_no_word)),
+            ("focus_resets".into(), v(s.focus_resets)),
         ])
     }
 }

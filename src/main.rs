@@ -40,7 +40,7 @@ pub enum Cmd {
 }
 
 pub enum Event {
-    Key { code: u16, value: i32, device: u32, seq: u64, presses: u64 },
+    Key { code: u16, value: i32, device: u32, seq: u64, presses: u64, at: std::time::Instant },
     Click,
     Scroll,
     Caps(bool),
@@ -241,7 +241,7 @@ fn run(dry_run: bool, verbose: bool) -> i32 {
     info!("wayswitch-rs запущен{}", if dry_run { " (dry-run)" } else { "" });
     for ev in rx {
         match ev {
-            Event::Key { code, value, device, seq, presses } => c.on_key(code, value, device, seq, presses),
+            Event::Key { code, value, device, seq, presses, at } => c.on_key(code, value, device, seq, presses, at),
             Event::Click => c.click(),
             Event::Scroll => c.scroll(),
             Event::Caps(on) => c.set_caps(on),
